@@ -18,24 +18,37 @@ func danmuHandler(app *tview.Application, messages *tview.TextView, busChan chan
 			continue
 		}
 
-		viewStr := messages.GetText(false)
 		str := ""
 
-		// 留意前面的空格显示
-		timeStr := msg.Time.Format(" 15:04")
+		timeStr := msg.Time.Format("15:04")
 		if config.Config.ShowTime == 0 {
 			timeStr = ""
 		}
 
-		if config.Config.SingleLine == 1 {
-			str += fmt.Sprintf("[%s]%s [%s]%s[%s] %s", config.Config.TimeColor, timeStr, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
-		} else {
-			if lastMsg.Type != msg.Type || lastMsg.Author != msg.Author || (timeStr != "" && lastMsg.Time.Format("15:04") != msg.Time.Format("15:04")) {
-				str += fmt.Sprintf("[%s]%s [%s]%s[%s]", config.Config.TimeColor, timeStr, config.Config.NameColor, msg.Author, config.Config.ContentColor) + "\n"
+		switch msg.Type {
+		case "DANMU_MSG":
+			if msg.MedalLevel > 0 {
+				str += fmt.Sprintf("[%s]%s [#FFD700][%s%d] [%s]%s[%s] %s", config.Config.TimeColor, timeStr, msg.MedalName, msg.MedalLevel, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
+			} else {
+				str += fmt.Sprintf("[%s]%s [%s]%s[%s] %s", config.Config.TimeColor, timeStr, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
 			}
-			str += fmt.Sprintf(" %s", msg.Content) + "\n"
+		case "SUPER_CHAT":
+			str += fmt.Sprintf("[%s]%s [#0000FF]SC ¥%d [#0000FF]%s[#0000FF]: %s", config.Config.TimeColor, timeStr, msg.GiftPrice, msg.Author, msg.Content)
+		case "SEND_GIFT":
+			if msg.CoinType == "gold" {
+				str += fmt.Sprintf("[%s]%s [#FF0000]%s[#FF0000] 投喂了 %d 个 %s（¥%.1f）", config.Config.TimeColor, timeStr, msg.Author, msg.GiftNum, msg.GiftName, float64(msg.GiftPrice)/1000.0)
+			} else {
+				str += fmt.Sprintf("[%s]%s [#FF0000]%s[#FF0000] 投喂了 %d 个 %s", config.Config.TimeColor, timeStr, msg.Author, msg.GiftNum, msg.GiftName)
+			}
+		case "GUARD_BUY":
+			str += fmt.Sprintf("[%s]%s [#FF0000]%s[#FF0000] 购买了 %s（¥%d）", config.Config.TimeColor, timeStr, msg.Author, msg.GiftName, msg.GiftPrice)
+		case "NOTICE_MSG":
+			str += fmt.Sprintf("[%s]%s", config.Config.ContentColor, msg.Content)
+		default:
+			str += fmt.Sprintf("[%s]%s [%s]%s[%s] %s", config.Config.TimeColor, timeStr, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
 		}
-		messages.SetText(viewStr + strings.TrimRight(str, "\n"))
+
+		fmt.Fprintf(messages, "%s\n", str)
 		lastMsg = msg
 		app.Draw()
 	}

@@ -4,6 +4,23 @@
 
 使用方法 直接下载 releases 中的 bin文件即可
 
+## 扫码登录功能
+
+本项目支持扫码登录，无需手动配置Cookie：
+
+1. 首次运行时，程序会自动弹出二维码，使用B站APP扫码即可登录
+2. 登录信息会自动保存到配置文件中
+3. 每次启动时会自动检查Cookie有效期，即将过期时自动刷新
+4. Cookie过期后会自动提示重新扫码登录
+
+### 强制重新登录
+
+如果需要重新登录，可以使用 `--login` 参数：
+
+```bash
+go run main.go --login
+```
+
 ---
 
 风格1: chatroom
@@ -42,14 +59,14 @@ go run main.go -c config.toml -r 9527 -t 1
 
 默认配置文件: ~/.config/bili/config.toml
 
-参数说明:  
+参数说明:
   1. `-c string:configfile`
   2. `-r string:roomId`
   3. `-t int:theme`
   4. `-l int:singleline`
   5. `-s int:showtime`
 
-快捷键:  
+快捷键:
   1. \<esc> 退出
   2. <ctrl+c> 退出
   3. <ctrl+u> 清空输入内容
@@ -58,13 +75,13 @@ go run main.go -c config.toml -r 9527 -t 1
 
 ## 类似项目
 
-[zaiic/bili-live-chat](https://github.com/zaiic/bili-live-chat): A bilibili streaming chat tool using TUI written in Rust. 
+[zaiic/bili-live-chat](https://github.com/zaiic/bili-live-chat): A bilibili streaming chat tool using TUI written in Rust.
 
 ## 贡献者
 
-- [yaocccc](https://github.com/yaocccc)  
+- [yaocccc](https://github.com/yaocccc)
 - [soft98-top](https://github.com/soft98-top)
-  - [PR#3 增加theme4，修复直播间rank显示](https://github.com/yaocccc/bilibili_live_tui/pull/3)  
+  - [PR#3 增加theme4，修复直播间rank显示](https://github.com/yaocccc/bilibili_live_tui/pull/3)
 - [zaiic](https://github.com/zaiic)
   - [PR#4 更新README，添加类似项目](https://github.com/yaocccc/bilibili_live_tui/pull/4)
 - [Ruixi-rebirth](https://github.com/Ruixi-rebirth)

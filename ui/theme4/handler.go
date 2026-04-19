@@ -9,6 +9,9 @@ import (
 	"github.com/rivo/tview"
 )
 
+var lastMsg = getter.DanmuMsg{}
+var lastLine = ""
+
 func roomInfoHandler(app *tview.Application, roomInfoView *tview.TextView, rankUsersView *tview.TextView, roomInfoChan chan getter.RoomInfo) {
 	for roomInfo := range roomInfoChan {
 		roomInfoView.SetText(
@@ -41,46 +44,56 @@ func roomInfoHandler(app *tview.Application, roomInfoView *tview.TextView, rankU
 	}
 }
 
-var lastMsg = getter.DanmuMsg{}
-var lastLine = ""
-
 func danmuHandler(app *tview.Application, messages *tview.TextView, access *tview.TextView, gift *tview.TextView, busChan chan getter.DanmuMsg) {
 	for msg := range busChan {
 		if strings.Trim(msg.Content, " ") == "" {
 			continue
 		}
 
-		viewStr := ""
-		str := ""
-
-		// 留意前面的空格显示
-		timeStr := msg.Time.Format(" 15:04")
+		timeStr := msg.Time.Format("15:04")
 		if config.Config.ShowTime == 0 {
 			timeStr = ""
 		}
 
-		if config.Config.SingleLine == 1 {
-			str += fmt.Sprintf("[%s]%s [%s]%s[%s] %s", config.Config.TimeColor, timeStr, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
-		} else {
-			if lastMsg.Type != msg.Type || lastMsg.Author != msg.Author || (timeStr != "" && lastMsg.Time.Format("15:04") != msg.Time.Format("15:04")) {
-				str += fmt.Sprintf("[%s]%s [%s]%s[%s]", config.Config.TimeColor, timeStr, config.Config.NameColor, msg.Author, config.Config.ContentColor) + "\n"
+		switch msg.Type {
+		case "DANMU_MSG":
+			var str string
+			if msg.MedalLevel > 0 {
+				str = fmt.Sprintf("[%s]%s [#FFD700][%s%d] [%s]%s[%s] %s", config.Config.TimeColor, timeStr, msg.MedalName, msg.MedalLevel, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
+			} else {
+				str = fmt.Sprintf("[%s]%s [%s]%s[%s] %s", config.Config.TimeColor, timeStr, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
 			}
-			str += fmt.Sprintf(" %s", msg.Content) + "\n"
+			fmt.Fprintf(messages, "%s\n", str)
+		case "SUPER_CHAT":
+			var str string
+			str = fmt.Sprintf("[%s]%s [#0000FF]SC ¥%d [#0000FF]%s[#0000FF]: %s", config.Config.TimeColor, timeStr, msg.GiftPrice, msg.Author, msg.Content)
+			fmt.Fprintf(messages, "%s\n", str)
+		case "SEND_GIFT":
+			var str string
+			if msg.CoinType == "gold" {
+				str = fmt.Sprintf("[%s]%s [#FF0000]%s[#FF0000] 投喂了 %d 个 %s（¥%.1f）", config.Config.TimeColor, timeStr, msg.Author, msg.GiftNum, msg.GiftName, float64(msg.GiftPrice)/1000.0)
+			} else {
+				str = fmt.Sprintf("[%s]%s [#FF0000]%s[#FF0000] 投喂了 %d 个 %s", config.Config.TimeColor, timeStr, msg.Author, msg.GiftNum, msg.GiftName)
+			}
+			fmt.Fprintf(gift, "%s\n", str)
+		case "GUARD_BUY":
+			var str string
+			str = fmt.Sprintf("[%s]%s [#FF0000]%s[#FF0000] 购买了 %s（¥%d）", config.Config.TimeColor, timeStr, msg.Author, msg.GiftName, msg.GiftPrice)
+			fmt.Fprintf(gift, "%s\n", str)
+		case "INTERACT_WORD":
+			var str string
+			str = fmt.Sprintf("[%s]%s [%s]%s[%s] 进入了直播间", config.Config.TimeColor, timeStr, config.Config.NameColor, msg.Author, config.Config.ContentColor)
+			fmt.Fprintf(access, "%s\n", str)
+		case "NOTICE_MSG":
+			var str string
+			str = fmt.Sprintf("[%s]%s", config.Config.ContentColor, msg.Content)
+			fmt.Fprintf(messages, "%s\n", str)
+		default:
+			var str string
+			str = fmt.Sprintf("[%s]%s [%s]%s[%s] %s", config.Config.TimeColor, timeStr, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
+			fmt.Fprintf(messages, "%s\n", str)
 		}
 
-		switch msg.Type {
-		case "INTERACT_WORD":
-			viewStr = access.GetText(false)
-			access.SetText(viewStr + strings.TrimRight(str, "\n"))
-			break
-		case "SEND_GIFT":
-			viewStr = gift.GetText(false)
-			gift.SetText(viewStr + strings.TrimRight(str, "\n"))
-			break
-		default:
-			viewStr = messages.GetText(false)
-			messages.SetText(viewStr + strings.TrimRight(str, "\n"))
-		}
 		lastMsg = msg
 		app.Draw()
 	}
