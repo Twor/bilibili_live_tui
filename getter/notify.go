@@ -41,6 +41,8 @@ func notifyDanmu(msg DanmuMsg) {
 		NotifySend("🚢 舰长", fmt.Sprintf("%s: 购买了 %s（¥%d）", msg.Author, msg.GiftName, msg.GiftPrice))
 	// case "INTERACT_WORD":
 	// 	NotifySend("进入", fmt.Sprintf("%s 进入了直播间", msg.Author))
+	case "FOLLOWER": // 关注事件
+		NotifySend("💚 关注", fmt.Sprintf("%s 关注了直播间", msg.Author))
 	case "NOTICE_MSG":
 		NotifySend("📢 系统消息", msg.Content)
 	}

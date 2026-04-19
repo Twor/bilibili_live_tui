@@ -5,12 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/user"
-	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
-	bg "github.com/iyear/biligo"
 )
 
 type ConfigType struct {
@@ -33,17 +30,15 @@ type ConfigType struct {
 	RefreshToken  string // 用于刷新Cookie的token
 }
 
-var Auth bg.CookieAuth
 var Config ConfigType
 var ConfigFile string // 配置文件路径
 
 func defaultCfgFile() (configFile string, err error) {
-	currentUser, err := user.Current()
+	cwd, err := os.Getwd()
 	if err != nil {
 		return
 	}
-	homeDir := currentUser.HomeDir
-	path := homeDir + "/.config/bili"
+	path := cwd + "/config"
 	if err = os.MkdirAll(path, 0755); err != nil {
 		return
 	}
@@ -53,17 +48,18 @@ func defaultCfgFile() (configFile string, err error) {
 		var f *os.File
 		config := ConfigType{
 			Cookie:       "",
-			RoomId:       23333333,
-			Theme:        1,
-			SingleLine:   1,
-			ShowTime:     1,
-			TimeColor:    "#FFFFFF",
-			NameColor:    "#FFFFFF",
-			ContentColor: "#FFFFFF",
-			FrameColor:   "#FFFFFF",
-			InfoColor:    "#FFFFFF",
-			RankColor:    "#FFFFFF",
-			Background:   "NONE", // 默认无背景颜色 NONE表示无背景颜色
+			RoomId:       7777,
+			Theme:        3,         // 主题，1=简约，2=经典，3=信息丰富，4=分栏显示
+			SingleLine:   1,         // 是否开启单行显示，开启后每条消息只占一行，关闭后多行消息会占用多行显示
+			ShowTime:     1,         // 是否显示时间
+			Notify:       1,         // 是否发送桌面通知
+			TimeColor:    "#FFFFFF", // 时间颜色，支持常见颜色名称和十六进制颜色代码
+			NameColor:    "#FFFFFF", // 名字颜色，支持常见颜色名称和十六进制颜色代码
+			ContentColor: "#FFFFFF", // 内容颜色，支持常见颜色名称和十六进制颜色代码
+			FrameColor:   "#FFFFFF", // 边框颜色，支持常见颜色名称和十六进制颜色代码
+			InfoColor:    "#FFFFFF", // 房间信息颜色，支持常见颜色名称和十六进制颜色代码
+			RankColor:    "#FFFFFF", // 排行榜颜色，支持常见颜色名称和十六进制颜色代码
+			Background:   "NONE",    // 默认无背景颜色 NONE表示无背景颜色
 		}
 		f, err = os.Create(configFile)
 		if err != nil {
@@ -74,7 +70,8 @@ func defaultCfgFile() (configFile string, err error) {
 			return
 		}
 
-		panic("配置文件已生成，请修改配置文件后再次运行，配置文件路径为：" + configFile)
+		fmt.Println("配置文件已生成，请修改配置文件后再次运行，配置文件路径为：" + configFile)
+		os.Exit(0)
 	}
 
 	return
@@ -119,7 +116,7 @@ func CheckAndRefreshCookie() error {
 			return DoLogin()
 		}
 		// 刷新成功，更新过期时间（延长30天）
-		Config.CookieExpires = now + 30 * 24 * 60 * 60
+		Config.CookieExpires = now + 30*24*60*60
 		Config.LastLoginTime = now
 		if err := SaveConfig(); err != nil {
 			fmt.Printf("保存配置失败: %v\n", err)
@@ -139,16 +136,16 @@ func CheckAndRefreshCookie() error {
 
 // DoLogin 执行扫码登录
 func DoLogin() error {
-	cookies, err := login.DoLogin()
+	result, err := login.DoLogin()
 	if err != nil {
 		return fmt.Errorf("扫码登录失败: %w", err)
 	}
 
-	// 将Cookie转换为字符串格式
-	cookieStr := login.CookiesToString(cookies)
-	Config.Cookie = cookieStr
+	// GoBilibiliLogin直接返回Cookie字符串，无需额外转换
+	Config.Cookie = result.Cookie
 	Config.LastLoginTime = time.Now().Unix()
-	Config.CookieExpires = time.Now().Unix() + 30 * 24 * 60 * 60 // 30天后过期
+	Config.CookieExpires = time.Now().Unix() + 30*24*60*60 // 30天后过期
+	Config.RefreshToken = result.RefreshToken
 
 	// 保存配置
 	if err := SaveConfig(); err != nil {
@@ -201,7 +198,7 @@ func Init() {
 	}
 
 	// 检查是否需要登录
-	if Config.Cookie == "" || Config.Cookie == "从你BILIBILI的请求里抓一个Cookie" {
+	if Config.Cookie == "" || Config.Cookie == "BILIBILI Cookie" {
 		fmt.Println("未检测到有效Cookie，开始扫码登录...")
 		if err := DoLogin(); err != nil {
 			panic(fmt.Sprintf("登录失败: %v", err))
@@ -258,20 +255,4 @@ func Init() {
 	if Config.Background == "" {
 		Config.Background = "NONE"
 	}
-
-	attrs := strings.Split(Config.Cookie, ";")
-	kvs := make(map[string]string)
-	for _, attr := range attrs {
-		kv := strings.Split(attr, "=")
-		if len(kv) < 2 {
-			continue
-		}
-		k := strings.Trim(kv[0], " ")
-		v := strings.Trim(kv[1], " ")
-		kvs[k] = v
-	}
-	Auth.SESSDATA = kvs["SESSDATA"]
-	Auth.DedeUserID = kvs["DedeUserID"]
-	Auth.DedeUserIDCkMd5 = kvs["DedeUserID__ckMd5"]
-	Auth.BiliJCT = kvs["bili_jct"]
 }

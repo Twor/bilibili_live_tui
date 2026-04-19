@@ -1,7 +1,5 @@
 # bilibili 直播间 TUI
 
-[关联的bilibili介绍视频](https://www.bilibili.com/video/bv1gG411G7XG)
-
 使用方法 直接下载 releases 中的 bin文件即可
 
 ## 扫码登录功能
@@ -22,22 +20,6 @@ go run main.go --login
 ```
 
 ---
-
-风格1: chatroom
-
-![t1](./theme1.png)
-
-风格2: pure
-
-![t2](./theme2.png)
-
-风格3: simple
-
-![t3](./theme3.png)
-
-风格4: info (感谢@soft98-top添加的theme4)
-
-![t4](./theme4.png)
 
 项目文件:
 
@@ -86,9 +68,3 @@ go run main.go -c config.toml -r 9527 -t 1
   - [PR#4 更新README，添加类似项目](https://github.com/yaocccc/bilibili_live_tui/pull/4)
 - [Ruixi-rebirth](https://github.com/Ruixi-rebirth)
   - [PR#6 自动创建配置文件到 $HOME/.config/bili/config.toml](https://github.com/yaocccc/bilibili_live_tui/pull/6)
-
-## Support: buy me a coffee)
-
-<a href="https://www.buymeacoffee.com/yaocccc" target="_blank">
-  <img src="https://github.com/yaocccc/yaocccc/raw/master/qr.png">
-</a>

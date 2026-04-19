@@ -30,16 +30,16 @@ type RoomInfo struct {
 }
 
 type DanmuMsg struct {
-	Author      string
-	Content     string
-	Type        string
-	Time        time.Time
-	MedalLevel  int    // 粉丝灯牌等级
-	MedalName   string // 粉丝灯牌名称
-	GiftPrice   int64  // 礼物/SC金额（金瓜子/元）
-	GiftNum     int64  // 礼物数量
-	GiftName    string // 礼物名称
-	CoinType    string // 币种类型 gold/silver
+	Author     string
+	Content    string
+	Type       string
+	Time       time.Time
+	MedalLevel int    // 粉丝灯牌等级
+	MedalName  string // 粉丝灯牌名称
+	GiftPrice  int64  // 礼物/SC金额（金瓜子/元）
+	GiftNum    int64  // 礼物数量
+	GiftName   string // 礼物名称
+	CoinType   string // 币种类型 gold/silver
 }
 
 var historied = false
@@ -64,6 +64,11 @@ func getHistory(busChan chan DanmuMsg, roomID int) {
 			Type:    "DANMU_MSG",
 			Time:    t,
 		}
+		if history.Get("medal").Exists() {
+			danmu.MedalLevel = int(history.Get("medal.0").Int())
+			danmu.MedalName = history.Get("medal.1").String()
+		}
+
 		busChan <- danmu
 	}
 	historied = true
@@ -190,6 +195,18 @@ func Run(busChan chan DanmuMsg, roomInfoChan chan RoomInfo) {
 		busChan <- msg
 		notifyDanmu(msg)
 	})
+
+	// 关注事件
+	// c.OnFollower(func(follower *message.Follower) {
+	// 	msg := DanmuMsg{
+	// 		Author:  follower.Username,
+	// 		Content: "关注了直播间",
+	// 		Type:    "FOLLOWER",
+	// 		Time:    time.Now(),
+	// 	}
+	// 	busChan <- msg
+	// 	notifyDanmu(msg)
+	// })
 
 	// 进入房间事件（使用自定义事件处理器）
 	c.RegisterCustomEventHandler("INTERACT_WORD", func(s string) {
