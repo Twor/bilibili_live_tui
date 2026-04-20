@@ -3,6 +3,7 @@ package getter
 import (
 	"bili/config"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Akegarasu/blivedm-go/client"
@@ -147,7 +148,10 @@ func Run(busChan chan DanmuMsg, roomInfoChan chan RoomInfo) {
 			msg.MedalName = danmaku.Sender.Medal.Name
 		}
 		if danmaku.Type == message.EmoticonDanmaku {
-			msg.Content = fmt.Sprintf("[表情]%s", danmaku.Emoticon.Url)
+			// 提取表情内容
+			emoticonStr := fmt.Sprintf("%v", danmaku.Emoticon.EmoticonUnique)
+			emoticon := strings.TrimPrefix(emoticonStr, "upower_")
+			msg.Content = fmt.Sprintf("%v", emoticon)
 		}
 		busChan <- msg
 		notifyDanmu(msg)
