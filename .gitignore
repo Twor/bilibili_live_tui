@@ -10,5 +10,5 @@ logs/
 **/.DS_Store
 bin/danmu_geter
 bin/danmu_sender
-
+bili
 **/config.toml
