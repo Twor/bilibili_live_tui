@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -24,7 +25,7 @@ type ConfigType struct {
 	InfoColor    string // 房间信息颜色
 	RankColor    string // 排行榜颜色
 	Background   string // 背景颜色
-	// 新增字段
+	// 登录相关字段
 	LastLoginTime int64  // 最后登录时间（Unix时间戳）
 	CookieExpires int64  // Cookie过期时间（Unix时间戳）
 	RefreshToken  string // 用于刷新Cookie的token
@@ -34,47 +35,48 @@ var Config ConfigType
 var ConfigFile string // 配置文件路径
 
 func defaultCfgFile() (configFile string, err error) {
-	cwd, err := os.Getwd()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return
+		return "", fmt.Errorf("获取用户目录失败: %w", err)
 	}
-	path := cwd + "/config"
-	if err = os.MkdirAll(path, 0755); err != nil {
-		return
+	cfgDir := filepath.Join(homeDir, ".config", "bili")
+	if err = os.MkdirAll(cfgDir, 0755); err != nil {
+		return "", fmt.Errorf("创建配置目录失败: %w", err)
 	}
-	configFile = path + "/config.toml"
+	configFile = filepath.Join(cfgDir, "config.toml")
 	_, err = os.Stat(configFile)
 	if os.IsNotExist(err) {
-		var f *os.File
-		config := ConfigType{
-			Cookie:       "",
-			RoomId:       7777,
-			Theme:        3,         // 主题，1=简约，2=经典，3=信息丰富，4=分栏显示
-			SingleLine:   1,         // 是否开启单行显示，开启后每条消息只占一行，关闭后多行消息会占用多行显示
-			ShowTime:     1,         // 是否显示时间
-			Notify:       1,         // 是否发送桌面通知
-			TimeColor:    "#FFFFFF", // 时间颜色，支持常见颜色名称和十六进制颜色代码
-			NameColor:    "#FFFFFF", // 名字颜色，支持常见颜色名称和十六进制颜色代码
-			ContentColor: "#FFFFFF", // 内容颜色，支持常见颜色名称和十六进制颜色代码
-			FrameColor:   "#FFFFFF", // 边框颜色，支持常见颜色名称和十六进制颜色代码
-			InfoColor:    "#FFFFFF", // 房间信息颜色，支持常见颜色名称和十六进制颜色代码
-			RankColor:    "#FFFFFF", // 排行榜颜色，支持常见颜色名称和十六进制颜色代码
-			Background:   "NONE",    // 默认无背景颜色 NONE表示无背景颜色
-		}
-		f, err = os.Create(configFile)
+		config := defaultConfig()
+		f, err := os.Create(configFile)
 		if err != nil {
-			return
+			return "", fmt.Errorf("创建配置文件失败: %w", err)
 		}
 		defer f.Close()
 		if err = toml.NewEncoder(f).Encode(config); err != nil {
-			return
+			return "", fmt.Errorf("写入配置文件失败: %w", err)
 		}
-
 		fmt.Println("配置文件已生成，请修改配置文件后再次运行，配置文件路径为：" + configFile)
 		os.Exit(0)
 	}
+	return configFile, nil
+}
 
-	return
+func defaultConfig() ConfigType {
+	return ConfigType{
+		Cookie:       "",
+		RoomId:       7777,
+		Theme:        3,
+		SingleLine:   1,
+		ShowTime:     1,
+		Notify:       1,
+		TimeColor:    "#FFFFFF",
+		NameColor:    "#FFFFFF",
+		ContentColor: "#FFFFFF",
+		FrameColor:   "#FFFFFF",
+		InfoColor:    "#FFFFFF",
+		RankColor:    "#FFFFFF",
+		Background:   "NONE",
+	}
 }
 
 // SaveConfig 保存配置到文件
@@ -82,23 +84,19 @@ func SaveConfig() error {
 	if ConfigFile == "" {
 		return fmt.Errorf("配置文件路径未设置")
 	}
-
 	f, err := os.Create(ConfigFile)
 	if err != nil {
 		return fmt.Errorf("创建配置文件失败: %w", err)
 	}
 	defer f.Close()
-
 	if err = toml.NewEncoder(f).Encode(Config); err != nil {
 		return fmt.Errorf("写入配置文件失败: %w", err)
 	}
-
 	return nil
 }
 
 // CheckAndRefreshCookie 检查Cookie是否有效，如果过期则刷新或重新登录
 func CheckAndRefreshCookie() error {
-	// 检查Cookie是否过期
 	now := time.Now().Unix()
 
 	// 如果Cookie过期时间已到，或者没有设置过期时间
@@ -140,20 +138,36 @@ func DoLogin() error {
 	if err != nil {
 		return fmt.Errorf("扫码登录失败: %w", err)
 	}
-
-	// GoBilibiliLogin直接返回Cookie字符串，无需额外转换
 	Config.Cookie = result.Cookie
 	Config.LastLoginTime = time.Now().Unix()
 	Config.CookieExpires = time.Now().Unix() + 30*24*60*60 // 30天后过期
 	Config.RefreshToken = result.RefreshToken
 
-	// 保存配置
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("保存登录信息失败: %w", err)
 	}
-
 	fmt.Println("登录信息已保存！")
 	return nil
+}
+
+// setColorDefault 如果颜色值为空则设置默认值
+func setColorDefault(color *string, def string) {
+	if *color == "" {
+		*color = def
+	}
+}
+
+// setDefaultColors 为所有颜色配置项设置默认值
+func setDefaultColors() {
+	setColorDefault(&Config.TimeColor, "#bbbbbb")
+	setColorDefault(&Config.NameColor, "#bbbbbb")
+	setColorDefault(&Config.ContentColor, "#bbbbbb")
+	setColorDefault(&Config.InfoColor, "#bbbbbb")
+	setColorDefault(&Config.RankColor, "#bbbbbb")
+	setColorDefault(&Config.FrameColor, "#bbbbbb")
+	if Config.Background == "" {
+		Config.Background = "NONE"
+	}
 }
 
 func Init() {
@@ -161,19 +175,18 @@ func Init() {
 	configFile := ""
 	roomId := int64(-1)
 	theme := int64(-1)
-	single_line := int64(-1)
-	show_time := int64(-1)
+	singleLine := int64(-1)
+	showTime := int64(-1)
 	notify := int64(-1)
-
-	// 新增命令行参数
 	doLogin := false
-	flag.StringVar(&configFile, "c", "", "usage for config")
-	flag.Int64Var(&roomId, "r", -1, "usage for room id")
-	flag.Int64Var(&theme, "t", -1, "usage for theme")
-	flag.Int64Var(&single_line, "l", -1, "usage for single_line")
-	flag.Int64Var(&show_time, "s", -1, "usage for show_time")
-	flag.Int64Var(&notify, "n", -1, "usage for notify (0=off, 1=on)")
-	flag.BoolVar(&doLogin, "login", false, "force QR code login")
+
+	flag.StringVar(&configFile, "c", "", "配置文件路径")
+	flag.Int64Var(&roomId, "r", -1, "直播间ID")
+	flag.Int64Var(&theme, "t", -1, "主题 (1-4)")
+	flag.Int64Var(&singleLine, "l", -1, "是否开启单行 (0/1)")
+	flag.Int64Var(&showTime, "s", -1, "是否显示时间 (0/1)")
+	flag.Int64Var(&notify, "n", -1, "是否开启通知 (0/1)")
+	flag.BoolVar(&doLogin, "login", false, "强制扫码登录")
 	flag.Parse()
 
 	if configFile == "" {
@@ -182,15 +195,13 @@ func Init() {
 			panic(err)
 		}
 	}
-
-	// 保存配置文件路径
 	ConfigFile = configFile
 
 	if _, err := toml.DecodeFile(configFile, &Config); err != nil {
 		fmt.Printf("Error decoding config.toml: %s\n", err)
 	}
 
-	// 如果指定了 --login 参数，强制重新登录
+	// 强制重新登录
 	if doLogin {
 		if err := DoLogin(); err != nil {
 			panic(fmt.Sprintf("登录失败: %v", err))
@@ -210,49 +221,23 @@ func Init() {
 		panic(fmt.Sprintf("登录状态检查失败: %v", err))
 	}
 
+	// 命令行参数覆盖配置文件
 	if roomId != -1 {
 		Config.RoomId = roomId
 	}
 	if theme != -1 {
 		Config.Theme = theme
 	}
-	if single_line != -1 {
-		Config.SingleLine = single_line
+	if singleLine != -1 {
+		Config.SingleLine = singleLine
 	}
-	if show_time != -1 {
-		Config.ShowTime = show_time
+	if showTime != -1 {
+		Config.ShowTime = showTime
 	}
 	if notify != -1 {
 		Config.Notify = notify
 	}
-	if Config.TimeColor == "" {
-		Config.TimeColor = "#bbbbbb"
-	}
-	if Config.NameColor == "" {
-		Config.NameColor = "#bbbbbb"
-	}
-	if Config.ContentColor == "" {
-		Config.ContentColor = "#bbbbbb"
-	}
-	if Config.TimeColor == "" {
-		Config.TimeColor = "#bbbbbb"
-	}
-	if Config.NameColor == "" {
-		Config.NameColor = "#bbbbbb"
-	}
-	if Config.ContentColor == "" {
-		Config.ContentColor = "#bbbbbb"
-	}
-	if Config.InfoColor == "" {
-		Config.InfoColor = "#bbbbbb"
-	}
-	if Config.RankColor == "" {
-		Config.RankColor = "#bbbbbb"
-	}
-	if Config.FrameColor == "" {
-		Config.FrameColor = "#bbbbbb"
-	}
-	if Config.Background == "" {
-		Config.Background = "NONE"
-	}
+
+	// 统一设置颜色默认值
+	setDefaultColors()
 }

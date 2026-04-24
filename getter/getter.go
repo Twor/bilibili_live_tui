@@ -3,12 +3,13 @@ package getter
 import (
 	"bili/config"
 	"fmt"
-	"strings"
+	"io"
+	"net/http"
+	"sync"
 	"time"
 
 	"github.com/Akegarasu/blivedm-go/client"
 	"github.com/Akegarasu/blivedm-go/message"
-	"github.com/asmcos/requests"
 	"github.com/tidwall/gjson"
 )
 
@@ -43,121 +44,189 @@ type DanmuMsg struct {
 	CoinType   string // 币种类型 gold/silver
 }
 
-var historied = false
+const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+var httpClient = &http.Client{Timeout: 15 * time.Second}
+
+// fetchJSON 发起 HTTP GET 请求并返回 JSON 字符串
+func fetchJSON(url string) (string, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("创建请求失败: %w", err)
+	}
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取响应失败: %w", err)
+	}
+	return string(body), nil
+}
+
+// getHistory 使用 sync.Once 确保只执行一次
+var getHistoryOnce sync.Once
 
 func getHistory(busChan chan DanmuMsg, roomID int) {
-	if historied {
-		return
+	getHistoryOnce.Do(func() {
+		historyApi := fmt.Sprintf("https://api.live.bilibili.com/xlive/web-room/v1/dM/gethistory?roomid=%d", roomID)
+		body, err := fetchJSON(historyApi)
+		if err != nil {
+			return
+		}
+
+		histories := gjson.Get(body, "data.room").Array()
+		for _, history := range histories {
+			t, _ := time.Parse("2006-01-02 15:04:05", history.Get("timeline").String())
+			danmu := DanmuMsg{
+				Author:  history.Get("nickname").String(),
+				Content: history.Get("text").String(),
+				Type:    "DANMU_MSG",
+				Time:    t,
+			}
+			if history.Get("medal").Exists() {
+				danmu.MedalLevel = int(history.Get("medal.0").Int())
+				danmu.MedalName = history.Get("medal.1").String()
+			}
+
+			select {
+			case busChan <- danmu:
+			default:
+				// channel 已满，丢弃该历史消息
+			}
+		}
+	})
+}
+
+// buildLiveDuration 计算直播持续时长字符串
+func buildLiveDuration(liveTimeStr string) string {
+	liveTime, err := time.Parse("2006-01-02 15:04:05", liveTimeStr)
+	if err != nil {
+		return "未知"
+	}
+	seconds := time.Now().Unix() - liveTime.Unix() + 8*60*60
+	days := seconds / 86400
+	hours := (seconds % 86400) / 3600
+	minutes := (seconds % 3600) / 60
+	if days > 0 {
+		return fmt.Sprintf("%d天%d时%d分", days, hours, minutes)
+	} else if hours > 0 {
+		return fmt.Sprintf("%d时%d分", hours, minutes)
+	}
+	return fmt.Sprintf("%d分", minutes)
+}
+
+// fetchRoomInfo 获取房间信息
+func fetchRoomInfo(roomID int) (*RoomInfo, error) {
+	roomInfoApi := fmt.Sprintf("https://api.live.bilibili.com/room/v1/Room/get_info?room_id=%d", roomID)
+	body, err := fetchJSON(roomInfoApi)
+	if err != nil {
+		return nil, err
 	}
 
-	historyApi := fmt.Sprintf("https://api.live.bilibili.com/xlive/web-room/v1/dM/gethistory?roomid=%d", roomID)
-	r, err := requests.Get(historyApi)
+	data := gjson.Get(body, "data")
+	info := &RoomInfo{
+		RoomId:         roomID,
+		Uid:            int(data.Get("uid").Int()),
+		Title:          data.Get("title").String(),
+		AreaName:       data.Get("area_name").String(),
+		ParentAreaName: data.Get("parent_area_name").String(),
+		Online:         data.Get("online").Int(),
+		Attention:      data.Get("attention").Int(),
+		Time:           buildLiveDuration(data.Get("live_time").String()),
+	}
+	return info, nil
+}
+
+// fetchOnlineRank 获取在线排行榜
+func fetchOnlineRank(uid int, roomID int) ([]OnlineRankUser, error) {
+	apiURL := fmt.Sprintf(
+		"https://api.live.bilibili.com/xlive/general-interface/v1/rank/getOnlineGoldRank?ruid=%d&roomId=%d&page=1&pageSize=50",
+		uid, roomID,
+	)
+	body, err := fetchJSON(apiURL)
+	if err != nil {
+		return nil, err
+	}
+
+	rawUsers := gjson.Get(body, "data.OnlineRankItem").Array()
+	users := make([]OnlineRankUser, 0, len(rawUsers))
+	for _, rawUser := range rawUsers {
+		user := OnlineRankUser{
+			Name:  rawUser.Get("name").String(),
+			Score: rawUser.Get("score").Int(),
+			Rank:  rawUser.Get("userRank").Int(),
+		}
+		users = append(users, user)
+	}
+	return users, nil
+}
+
+// syncRoomInfo 定时同步房间信息和排行榜，每30秒刷新一次
+func syncRoomInfo(roomID int, roomInfoChan chan RoomInfo) {
+	// 立即执行第一次同步
+	fetchAndSendRoomInfo(roomID, roomInfoChan)
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		fetchAndSendRoomInfo(roomID, roomInfoChan)
+	}
+}
+
+// fetchAndSendRoomInfo 获取房间信息并发送到 channel
+func fetchAndSendRoomInfo(roomID int, roomInfoChan chan RoomInfo) {
+	info, err := fetchRoomInfo(roomID)
 	if err != nil {
 		return
 	}
 
-	histories := gjson.Get(r.Text(), "data.room").Array()
-	for _, history := range histories {
-		t, _ := time.Parse("2006-01-02 15:04:05", history.Get("timeline").String())
-		danmu := DanmuMsg{
-			Author:  history.Get("nickname").String(),
-			Content: history.Get("text").String(),
-			Type:    "DANMU_MSG",
-			Time:    t,
-		}
-		if history.Get("medal").Exists() {
-			danmu.MedalLevel = int(history.Get("medal.0").Int())
-			danmu.MedalName = history.Get("medal.1").String()
-		}
-
-		busChan <- danmu
+	rankUsers, err := fetchOnlineRank(info.Uid, roomID)
+	if err == nil {
+		info.OnlineRankUsers = rankUsers
 	}
-	historied = true
-}
 
-func syncRoomInfo(roomID int, roomInfoChan chan RoomInfo) {
-	for {
-		roomInfoApi := fmt.Sprintf("https://api.live.bilibili.com/room/v1/Room/get_info?room_id=%d", roomID)
-		roomInfo := new(RoomInfo)
-		roomInfo.OnlineRankUsers = make([]OnlineRankUser, 0)
-		r1, err1 := requests.Get(roomInfoApi)
-		if err1 == nil {
-			roomInfo.RoomId = roomID
-			roomInfo.Uid = int(gjson.Get(r1.Text(), "data.uid").Int())
-			roomInfo.Title = gjson.Get(r1.Text(), "data.title").String()
-			roomInfo.AreaName = gjson.Get(r1.Text(), "data.area_name").String()
-			roomInfo.ParentAreaName = gjson.Get(r1.Text(), "data.parent_area_name").String()
-			roomInfo.Online = gjson.Get(r1.Text(), "data.online").Int()
-			roomInfo.Attention = gjson.Get(r1.Text(), "data.attention").Int()
-			_time, _ := time.Parse("2006-01-02 15:04:05", gjson.Get(r1.Text(), "data.live_time").String())
-			seconds := time.Now().Unix() - _time.Unix() + 8*60*60
-			days := seconds / 86400
-			hours := (seconds % 86400) / 3600
-			minutes := (seconds % 3600) / 60
-			if days > 0 {
-				roomInfo.Time = fmt.Sprintf("%d天%d时%d分", days, hours, minutes)
-			} else if hours > 0 {
-				roomInfo.Time = fmt.Sprintf("%d时%d分", hours, minutes)
-			} else {
-				roomInfo.Time = fmt.Sprintf("%d分", minutes)
-			}
-		}
-
-		onlineRankApi := fmt.Sprintf("https://api.live.bilibili.com/xlive/general-interface/v1/rank/getOnlineGoldRank?ruid=%d&roomId=%d&page=1&pageSize=50", roomInfo.Uid, roomID)
-		r2, err2 := requests.Get(onlineRankApi)
-		if err2 == nil {
-			rawUsers := gjson.Get(r2.Text(), "data.OnlineRankItem").Array()
-			for _, rawUser := range rawUsers {
-				user := OnlineRankUser{
-					Name:  rawUser.Get("name").String(),
-					Score: rawUser.Get("score").Int(),
-					Rank:  rawUser.Get("userRank").Int(),
-				}
-				roomInfo.OnlineRankUsers = append(roomInfo.OnlineRankUsers, user)
-			}
-		}
-
-		roomInfoChan <- *roomInfo
-		time.Sleep(30 * time.Second)
+	select {
+	case roomInfoChan <- *info:
+	default:
+		// channel 已满，丢弃旧数据
 	}
 }
 
-func Run(busChan chan DanmuMsg, roomInfoChan chan RoomInfo) {
-	roomID := int(config.Config.RoomId)
+// buildDanmuMsg 构建弹幕消息
+func buildDanmuMsg(danmaku *message.Danmaku) DanmuMsg {
+	msg := DanmuMsg{
+		Author:  danmaku.Sender.Uname,
+		Content: danmaku.Content,
+		Type:    "DANMU_MSG",
+		Time:    time.Now(),
+	}
+	if danmaku.Sender.Medal != nil {
+		msg.MedalLevel = danmaku.Sender.Medal.Level
+		msg.MedalName = danmaku.Sender.Medal.Name
+	}
+	if danmaku.Type == message.EmoticonDanmaku {
+		emoticonStr := fmt.Sprintf("[%v]", danmaku.Extra.Content)
+		// msg.Content = strings.TrimPrefix(emoticonStr, "upower_")
+		msg.Content = emoticonStr
+	}
+	return msg
+}
 
-	// 启动房间信息同步
-	go syncRoomInfo(roomID, roomInfoChan)
-
-	// 获取历史弹幕
-	go getHistory(busChan, roomID)
-
-	// 创建 blivedm 客户端
-	c := client.NewClient(roomID)
-	c.SetCookie(config.Config.Cookie)
-
-	// 弹幕事件
+// setupEventHandlers 注册所有事件处理器
+func setupEventHandlers(c *client.Client, busChan chan DanmuMsg) {
 	c.OnDanmaku(func(danmaku *message.Danmaku) {
-		msg := DanmuMsg{
-			Author:  danmaku.Sender.Uname,
-			Content: danmaku.Content,
-			Type:    "DANMU_MSG",
-			Time:    time.Now(),
-		}
-		if danmaku.Sender.Medal != nil {
-			msg.MedalLevel = danmaku.Sender.Medal.Level
-			msg.MedalName = danmaku.Sender.Medal.Name
-		}
-		if danmaku.Type == message.EmoticonDanmaku {
-			// 提取表情内容
-			emoticonStr := fmt.Sprintf("%v", danmaku.Emoticon.EmoticonUnique)
-			emoticon := strings.TrimPrefix(emoticonStr, "upower_")
-			msg.Content = fmt.Sprintf("%v", emoticon)
-		}
+		msg := buildDanmuMsg(danmaku)
 		busChan <- msg
 		notifyDanmu(msg)
 	})
 
-	// SC 事件
 	c.OnSuperChat(func(superChat *message.SuperChat) {
 		msg := DanmuMsg{
 			Author:    superChat.UserInfo.Uname,
@@ -170,7 +239,6 @@ func Run(busChan chan DanmuMsg, roomInfoChan chan RoomInfo) {
 		notifyDanmu(msg)
 	})
 
-	// 礼物事件
 	c.OnGift(func(gift *message.Gift) {
 		msg := DanmuMsg{
 			Author:    gift.Uname,
@@ -186,7 +254,6 @@ func Run(busChan chan DanmuMsg, roomInfoChan chan RoomInfo) {
 		notifyDanmu(msg)
 	})
 
-	// 上舰事件
 	c.OnGuardBuy(func(guardBuy *message.GuardBuy) {
 		msg := DanmuMsg{
 			Author:    guardBuy.Username,
@@ -200,21 +267,8 @@ func Run(busChan chan DanmuMsg, roomInfoChan chan RoomInfo) {
 		notifyDanmu(msg)
 	})
 
-	// 关注事件
-	// c.OnFollower(func(follower *message.Follower) {
-	// 	msg := DanmuMsg{
-	// 		Author:  follower.Username,
-	// 		Content: "关注了直播间",
-	// 		Type:    "FOLLOWER",
-	// 		Time:    time.Now(),
-	// 	}
-	// 	busChan <- msg
-	// 	notifyDanmu(msg)
-	// })
-
-	// 进入房间事件（使用自定义事件处理器）
+	// 进入房间事件
 	c.RegisterCustomEventHandler("INTERACT_WORD", func(s string) {
-		// 解析 JSON 获取用户名
 		result := gjson.Parse(s)
 		uname := result.Get("data.uname").String()
 		if uname != "" {
@@ -228,29 +282,53 @@ func Run(busChan chan DanmuMsg, roomInfoChan chan RoomInfo) {
 			notifyDanmu(msg)
 		}
 	})
+}
 
-	// 启动客户端（在 goroutine 中）
+// startBlivedmClient 启动 blivedm 客户端（goroutine 会自动保持运行）
+func startBlivedmClient(roomID int, busChan chan DanmuMsg) {
+	c := client.NewClient(roomID)
+	c.SetCookie(config.Config.Cookie)
+
+	setupEventHandlers(c, busChan)
+
 	go func() {
-		err := c.Start()
-		if err != nil {
-			msg := DanmuMsg{
+		busChan <- DanmuMsg{
+			Author:  "system",
+			Content: "正在连接弹幕服务器...",
+			Type:    "NOTICE_MSG",
+			Time:    time.Now(),
+		}
+
+		if err := c.Start(); err != nil {
+			busChan <- DanmuMsg{
 				Author:  "system",
 				Content: fmt.Sprintf("连接失败: %v", err),
 				Type:    "NOTICE_MSG",
 				Time:    time.Now(),
 			}
-			busChan <- msg
 			return
 		}
 
-		msg := DanmuMsg{
+		busChan <- DanmuMsg{
 			Author:  "system",
 			Content: "已连接到弹幕服务器",
 			Type:    "NOTICE_MSG",
 			Time:    time.Now(),
 		}
-		busChan <- msg
 
-		// goroutine 会自动保持运行，blivedm-go 内部有 wsLoop 和 heartBeatLoop
+		// blivedm-go 内部有 wsLoop 和 heartBeatLoop，goroutine 自动保持运行
 	}()
+}
+
+func Run(busChan chan DanmuMsg, roomInfoChan chan RoomInfo) {
+	roomID := int(config.Config.RoomId)
+
+	// 启动房间信息同步（每30秒刷新）
+	go syncRoomInfo(roomID, roomInfoChan)
+
+	// 获取历史弹幕（仅执行一次）
+	go getHistory(busChan, roomID)
+
+	// 启动 blivedm 客户端
+	startBlivedmClient(roomID, busChan)
 }

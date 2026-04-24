@@ -1,4 +1,4 @@
-package theme1
+package common
 
 import (
 	"bili/config"
@@ -6,10 +6,32 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-func roomInfoHandler(app *tview.Application, roomInfoView *tview.TextView, rankUsersView *tview.TextView, roomInfoChan chan getter.RoomInfo) {
+const (
+	colorDanmuMedal = "#FFD700"
+	colorSuperChat  = "#0000FF"
+	colorGift       = "#FF0000"
+)
+
+var (
+	Bg                 = tcell.ColorDefault
+	SubmitHistory      = []string{}
+	SubmitHistoryIndex = 0
+)
+
+func SetBoxAttr(box *tview.Box, title string) {
+	box.SetBorder(true)
+	box.SetTitleAlign(tview.AlignLeft)
+	box.SetTitle(title)
+	box.SetBackgroundColor(Bg)
+	box.SetBorderColor(tcell.GetColor(config.Config.FrameColor))
+	box.SetTitleColor(tcell.GetColor(config.Config.FrameColor))
+}
+
+func RoomInfoHandler(app *tview.Application, roomInfoView *tview.TextView, rankUsersView *tview.TextView, roomInfoChan chan getter.RoomInfo) {
 	for roomInfo := range roomInfoChan {
 		roomInfoView.SetText(
 			"[" + config.Config.InfoColor + "]" +
@@ -41,10 +63,7 @@ func roomInfoHandler(app *tview.Application, roomInfoView *tview.TextView, rankU
 	}
 }
 
-var lastMsg = getter.DanmuMsg{}
-var lastLine = ""
-
-func danmuHandler(app *tview.Application, messages *tview.TextView, busChan chan getter.DanmuMsg) {
+func DanmuHandler(app *tview.Application, messages *tview.TextView, busChan chan getter.DanmuMsg) {
 	for msg := range busChan {
 		if strings.Trim(msg.Content, " ") == "" {
 			continue
@@ -60,20 +79,20 @@ func danmuHandler(app *tview.Application, messages *tview.TextView, busChan chan
 		switch msg.Type {
 		case "DANMU_MSG":
 			if msg.MedalLevel > 0 {
-				str += fmt.Sprintf("[%s]%s [#FFD700][%s%d] [%s]%s[%s]: %s", config.Config.TimeColor, timeStr, msg.MedalName, msg.MedalLevel, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
+				str += fmt.Sprintf("[%s]%s [%s][%s%d] [%s]%s[%s]: %s", config.Config.TimeColor, timeStr, colorDanmuMedal, msg.MedalName, msg.MedalLevel, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
 			} else {
 				str += fmt.Sprintf("[%s]%s [%s]%s[%s]: %s", config.Config.TimeColor, timeStr, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
 			}
 		case "SUPER_CHAT":
-			str += fmt.Sprintf("[%s]%s [#0000FF]SC ¥%d [#0000FF]%s[#0000FF]: %s", config.Config.TimeColor, timeStr, msg.GiftPrice, msg.Author, msg.Content)
+			str += fmt.Sprintf("[%s]%s [%s]SC ¥%d [%s]%s[%s]: %s", config.Config.TimeColor, timeStr, colorSuperChat, msg.GiftPrice, colorSuperChat, msg.Author, colorSuperChat, msg.Content)
 		case "SEND_GIFT":
 			if msg.CoinType == "gold" {
-				str += fmt.Sprintf("[%s]%s [#FF0000]%s: [#FF0000] 投喂了 %d 个 %s（¥%.1f）", config.Config.TimeColor, timeStr, msg.Author, msg.GiftNum, msg.GiftName, float64(msg.GiftPrice)/1000.0)
+				str += fmt.Sprintf("[%s]%s [%s]%s: [%s] 投喂了 %d 个 %s（¥%.1f）", config.Config.TimeColor, timeStr, colorGift, msg.Author, colorGift, msg.GiftNum, msg.GiftName, float64(msg.GiftPrice)/1000.0)
 			} else {
-				str += fmt.Sprintf("[%s]%s [#FF0000]%s: [#FF0000] 投喂了 %d 个 %s", config.Config.TimeColor, timeStr, msg.Author, msg.GiftNum, msg.GiftName)
+				str += fmt.Sprintf("[%s]%s [%s]%s: [%s] 投喂了 %d 个 %s", config.Config.TimeColor, timeStr, colorGift, msg.Author, colorGift, msg.GiftNum, msg.GiftName)
 			}
 		case "GUARD_BUY":
-			str += fmt.Sprintf("[%s]%s [#FF0000]%s: [#FF0000] 购买了 %s（¥%d）", config.Config.TimeColor, timeStr, msg.Author, msg.GiftName, msg.GiftPrice)
+			str += fmt.Sprintf("[%s]%s [%s]%s: [%s] 购买了 %s（¥%d）", config.Config.TimeColor, timeStr, colorGift, msg.Author, colorGift, msg.GiftName, msg.GiftPrice)
 		case "INTERACT_WORD":
 			str += fmt.Sprintf("[%s]%s [%s]%s[%s]%s", config.Config.TimeColor, timeStr, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
 		case "NOTICE_MSG":
@@ -83,7 +102,6 @@ func danmuHandler(app *tview.Application, messages *tview.TextView, busChan chan
 		}
 
 		fmt.Fprintf(messages, "%s\n", str)
-		lastMsg = msg
 		app.Draw()
 	}
 }

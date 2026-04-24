@@ -6,33 +6,21 @@ import (
 	"bili/config"
 	"bili/getter"
 	"bili/sender"
+	"bili/ui/common"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-var submitHistory = []string{}
-var submitHistoryIndex = 0
-var bg = tcell.ColorDefault
-
-func setBoxAttr(box *tview.Box, title string) {
-	box.SetBorder(true)
-	box.SetTitleAlign(tview.AlignLeft)
-	box.SetTitle(title)
-	box.SetBackgroundColor(bg)
-	box.SetBorderColor(tcell.GetColor(config.Config.FrameColor))
-	box.SetTitleColor(tcell.GetColor(config.Config.FrameColor))
-}
-
 func drawSlidebar() (*tview.Grid, *tview.TextView, *tview.TextView) {
 	slidebarGrid := tview.NewGrid().SetRows(0, 0).SetBorders(false)
 	roomInfoView := tview.NewTextView().SetDynamicColors(true)
-	roomInfoView.SetBackgroundColor(bg)
-	setBoxAttr(roomInfoView.Box, "RoomInfo")
+	roomInfoView.SetBackgroundColor(common.Bg)
+	common.SetBoxAttr(roomInfoView.Box, "RoomInfo")
 
 	rankUsersView := tview.NewTextView().SetDynamicColors(true)
-	rankUsersView.SetBackgroundColor(bg)
-	setBoxAttr(rankUsersView.Box, "RankUsers")
+	rankUsersView.SetBackgroundColor(common.Bg)
+	common.SetBoxAttr(rankUsersView.Box, "RankUsers")
 
 	slidebarGrid.
 		AddItem(roomInfoView, 0, 0, 1, 1, 0, 0, false).
@@ -44,18 +32,18 @@ func drawSlidebar() (*tview.Grid, *tview.TextView, *tview.TextView) {
 func drawChat() (*tview.Grid, *tview.InputField, *tview.TextView, *tview.TextView, *tview.TextView) {
 	chatGrid := tview.NewGrid().SetRows(0, 0, 3).SetBorders(false)
 	messagesView := tview.NewTextView().SetDynamicColors(true)
-	messagesView.SetBackgroundColor(bg)
-	setBoxAttr(messagesView.Box, "Messages")
+	messagesView.SetBackgroundColor(common.Bg)
+	common.SetBoxAttr(messagesView.Box, "Messages")
 	accessView := tview.NewTextView().SetDynamicColors(true)
-	accessView.SetBackgroundColor(bg)
-	setBoxAttr(accessView.Box, "Access")
+	accessView.SetBackgroundColor(common.Bg)
+	common.SetBoxAttr(accessView.Box, "Access")
 	giftView := tview.NewTextView().SetDynamicColors(true)
-	giftView.SetBackgroundColor(bg)
-	setBoxAttr(giftView.Box, "Gift")
+	giftView.SetBackgroundColor(common.Bg)
+	common.SetBoxAttr(giftView.Box, "Gift")
 
 	input := tview.NewInputField()
-	input.SetFormAttributes(0, tcell.ColorDefault, bg, tcell.ColorDefault, bg)
-	setBoxAttr(input.Box, "Send")
+	input.SetFormAttributes(0, tcell.ColorDefault, common.Bg, tcell.ColorDefault, common.Bg)
+	common.SetBoxAttr(input.Box, "Send")
 
 	// 动态布局 宽度大于80时 采用三列布局 否则采用两列布局
 	// 三列 | 消息 | 访问 | 礼物 |, 两列 | 消息 | 访问 / 礼物 |
@@ -80,18 +68,18 @@ func draw(app *tview.Application, roomId int64, busChan chan getter.DanmuMsg, ro
 		AddItem(slidebarGrid, 0, 0, 1, 1, 0, 0, false).
 		AddItem(chatGrid, 0, 1, 1, 1, 0, 0, true)
 
-	go roomInfoHandler(app, roomInfoView, rankUsersView, roomInfoChan)
+	go common.RoomInfoHandler(app, roomInfoView, rankUsersView, roomInfoChan)
 	go danmuHandler(app, messagesView, accessView, giftView, busChan)
 
 	input.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
 			go sender.SendMsg(roomId, input.GetText(), busChan)
 
-			submitHistory = append(submitHistory, input.GetText())
-			if len(submitHistory) > 10 {
-				submitHistory = submitHistory[1:]
+			common.SubmitHistory = append(common.SubmitHistory, input.GetText())
+			if len(common.SubmitHistory) > 10 {
+				common.SubmitHistory = common.SubmitHistory[1:]
 			}
-			submitHistoryIndex = len(submitHistory)
+			common.SubmitHistoryIndex = len(common.SubmitHistory)
 
 			input.SetText("")
 		}
@@ -102,7 +90,7 @@ func draw(app *tview.Application, roomId int64, busChan chan getter.DanmuMsg, ro
 
 func Run(busChan chan getter.DanmuMsg, roomInfoChan chan getter.RoomInfo) {
 	if config.Config.Background != "NONE" {
-		bg = tcell.GetColor(config.Config.Background)
+		common.Bg = tcell.GetColor(config.Config.Background)
 	}
 	app := tview.NewApplication()
 	if err := app.SetRoot(draw(app, config.Config.RoomId, busChan, roomInfoChan), true).EnableMouse(false).Run(); err != nil {

@@ -1,0 +1,16 @@
+Cookie = ""
+RoomId = 12345
+Theme = 3
+SingleLine = 1
+ShowTime = 0
+Notify = 1
+TimeColor = "#FFFFFF"
+NameColor = "#FFFFFF"
+ContentColor = "#FFFFFF"
+FrameColor = "#FFFFFF"
+InfoColor = "#FFFFFF"
+RankColor = "#FFFFFF"
+Background = "NONE"
+LastLoginTime = 1776637856
+CookieExpires = 1779229856
+RefreshToken = "bd7de9e658cca9c6c7c98df51da29142"

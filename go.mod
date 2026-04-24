@@ -5,7 +5,6 @@ go 1.25.0
 require (
 	github.com/Akegarasu/blivedm-go v1.6.0
 	github.com/BurntSushi/toml v1.2.1
-	github.com/asmcos/requests v0.0.0-20210319030608-c839e8ae4946
 	github.com/gdamore/tcell/v2 v2.6.0
 	github.com/rivo/tview v0.0.0-20230330183452-5796b0cd5c1f
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e

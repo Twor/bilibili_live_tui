@@ -6,25 +6,39 @@ import (
 	"bili/config"
 	"bili/getter"
 	"bili/sender"
+	"bili/ui/common"
+	"fmt"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-var submitHistory = []string{}
-var submitHistoryIndex = 0
-var bg = tcell.ColorDefault
+func roomInfoHandler(app *tview.Application, roomInfoView *tview.TextView, roomInfoChan chan getter.RoomInfo) {
+	for roomInfo := range roomInfoChan {
+		roomInfoView.SetText(
+			"[" + config.Config.InfoColor + "]" +
+				roomInfo.Title + "\n" +
+				fmt.Sprintf("ID: %d", roomInfo.RoomId) + "\n" +
+				fmt.Sprintf("分区: %s/%s", roomInfo.ParentAreaName, roomInfo.AreaName) + "\n" +
+				fmt.Sprintf("👀: %d", roomInfo.Online) + "\n" +
+				fmt.Sprintf("❤️: %d", roomInfo.Attention) + "\n" +
+				fmt.Sprintf("🕒: %s", roomInfo.Time) + "\n",
+		)
+		roomInfoView.ScrollToBeginning()
+		app.Draw()
+	}
+}
 
 func draw(app *tview.Application, roomId int64, busChan chan getter.DanmuMsg, roomInfoChan chan getter.RoomInfo) *tview.Grid {
 	grid := tview.NewGrid().SetRows(1, 1, 0, 1, 1).SetBorders(false)
 
 	roomInfoView := tview.NewTextView().SetDynamicColors(true)
-	roomInfoView.SetBackgroundColor(bg)
+	roomInfoView.SetBackgroundColor(common.Bg)
 
 	delimiter1 := tview.NewTextView().SetTextColor(tcell.GetColor(config.Config.FrameColor))
 	delimiter2 := tview.NewTextView().SetTextColor(tcell.GetColor(config.Config.FrameColor))
-	delimiter1.SetBackgroundColor(bg).SetBorder(false)
-	delimiter2.SetBackgroundColor(bg).SetBorder(false)
+	delimiter1.SetBackgroundColor(common.Bg).SetBorder(false)
+	delimiter2.SetBackgroundColor(common.Bg).SetBorder(false)
 
 	_, _, width, _ := grid.GetRect()
 	str := ""
@@ -35,10 +49,10 @@ func draw(app *tview.Application, roomId int64, busChan chan getter.DanmuMsg, ro
 	delimiter2.SetText(str)
 
 	messagesView := tview.NewTextView().SetDynamicColors(true)
-	messagesView.SetBackgroundColor(bg)
+	messagesView.SetBackgroundColor(common.Bg)
 
 	input := tview.NewInputField()
-	input.SetFormAttributes(0, tcell.ColorDefault, bg, tcell.ColorDefault, bg)
+	input.SetFormAttributes(0, tcell.ColorDefault, common.Bg, tcell.ColorDefault, common.Bg)
 
 	grid.
 		AddItem(roomInfoView, 0, 0, 1, 1, 0, 0, false).
@@ -48,17 +62,17 @@ func draw(app *tview.Application, roomId int64, busChan chan getter.DanmuMsg, ro
 		AddItem(input /*  */, 4, 0, 1, 1, 0, 0, true)
 
 	go roomInfoHandler(app, roomInfoView, roomInfoChan)
-	go danmuHandler(app, messagesView, busChan)
+	go common.DanmuHandler(app, messagesView, busChan)
 
 	input.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
 			go sender.SendMsg(roomId, input.GetText(), busChan)
 
-			submitHistory = append(submitHistory, input.GetText())
-			if len(submitHistory) > 10 {
-				submitHistory = submitHistory[1:]
+			common.SubmitHistory = append(common.SubmitHistory, input.GetText())
+			if len(common.SubmitHistory) > 10 {
+				common.SubmitHistory = common.SubmitHistory[1:]
 			}
-			submitHistoryIndex = len(submitHistory)
+			common.SubmitHistoryIndex = len(common.SubmitHistory)
 
 			input.SetText("")
 		}
@@ -79,7 +93,7 @@ func draw(app *tview.Application, roomId int64, busChan chan getter.DanmuMsg, ro
 
 func Run(busChan chan getter.DanmuMsg, roomInfoChan chan getter.RoomInfo) {
 	if config.Config.Background != "NONE" {
-		bg = tcell.GetColor(config.Config.Background)
+		common.Bg = tcell.GetColor(config.Config.Background)
 	}
 	app := tview.NewApplication()
 	if err := app.SetRoot(draw(app, config.Config.RoomId, busChan, roomInfoChan), true).EnableMouse(false).Run(); err != nil {
