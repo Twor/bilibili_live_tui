@@ -76,12 +76,11 @@ func danmuHandler(app *tview.Application, messages *tview.TextView, access *tvie
 				colorGift, msg.GiftName, msg.GiftPrice)
 			fmt.Fprintf(gift, "%s\n", str)
 
-		case "INTERACT_WORD":
-			str := fmt.Sprintf("[%s]%s [%s]%s[%s]%s",
-				config.Config.TimeColor, timeStr,
-				config.Config.NameColor, msg.Author,
-				config.Config.ContentColor, msg.Content)
-			fmt.Fprintf(access, "%s\n", str)
+	case "INTERACT_WORD":
+		str := fmt.Sprintf("[%s]%s [#666666]%s %s",
+			config.Config.TimeColor, timeStr,
+			msg.Author, msg.Content)
+		fmt.Fprintf(access, "%s\n", str)
 
 		case "NOTICE_MSG":
 			str := fmt.Sprintf("[%s]%s",

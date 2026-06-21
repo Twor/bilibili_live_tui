@@ -18,6 +18,7 @@ type ConfigType struct {
 	SingleLine   int64  // 是否开启单行
 	ShowTime     int64  // 是否显示时间
 	Notify       int64  // 是否发送桌面通知
+	Speak        int64  // 是否语音朗读弹幕
 	TimeColor    string // 时间颜色
 	NameColor    string // 名字颜色
 	ContentColor string // 内容颜色
@@ -69,6 +70,7 @@ func defaultConfig() ConfigType {
 		SingleLine:   1,
 		ShowTime:     1,
 		Notify:       1,
+		Speak:        0,
 		TimeColor:    "#FFFFFF",
 		NameColor:    "#FFFFFF",
 		ContentColor: "#FFFFFF",
@@ -178,6 +180,7 @@ func Init() {
 	singleLine := int64(-1)
 	showTime := int64(-1)
 	notify := int64(-1)
+	speak := int64(-1)
 	doLogin := false
 
 	flag.StringVar(&configFile, "c", "", "配置文件路径")
@@ -186,6 +189,8 @@ func Init() {
 	flag.Int64Var(&singleLine, "l", -1, "是否开启单行 (0/1)")
 	flag.Int64Var(&showTime, "s", -1, "是否显示时间 (0/1)")
 	flag.Int64Var(&notify, "n", -1, "是否开启通知 (0/1)")
+	flag.Int64Var(&speak, "k", -1, "语音朗读 (0/1)")
+	flag.Int64Var(&speak, "speak", -1, "语音朗读 (0/1)")
 	flag.BoolVar(&doLogin, "login", false, "强制扫码登录")
 	flag.Parse()
 
@@ -236,6 +241,9 @@ func Init() {
 	}
 	if notify != -1 {
 		Config.Notify = notify
+	}
+	if speak != -1 {
+		Config.Speak = speak
 	}
 
 	// 统一设置颜色默认值

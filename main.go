@@ -5,6 +5,7 @@ import (
 	"bili/getter"
 	"bili/sender"
 	"bili/ui"
+	"fmt"
 	"os"
 	"os/signal"
 	"strings"
@@ -33,7 +34,14 @@ func main() {
 	roomInfoChan := make(chan getter.RoomInfo, 32)
 
 	getter.Run(busChan, roomInfoChan)
-	sender.Run()
+
+	if err := sender.Run(); err != nil {
+		busChan <- getter.DanmuMsg{
+			Author:  "system",
+			Content: fmt.Sprintf("发送功能初始化失败: %v", err),
+			Type:    "NOTICE_MSG",
+		}
+	}
 
 	// 启动信号监听，实现优雅关闭
 	sigCh := make(chan os.Signal, 1)

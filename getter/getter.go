@@ -13,6 +13,9 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// GiftTotal 累计礼物金额（元），SC/金瓜子礼物/上舰计入
+var GiftTotal float64
+
 type OnlineRankUser struct {
 	Name  string
 	Score int64
@@ -23,6 +26,7 @@ type RoomInfo struct {
 	RoomId          int
 	Uid             int
 	Title           string
+	LiveStatus      int    // 0=未开播 1=直播中 2=轮播
 	ParentAreaName  string
 	AreaName        string
 	Online          int64
@@ -97,7 +101,6 @@ func getHistory(busChan chan DanmuMsg, roomID int) {
 			select {
 			case busChan <- danmu:
 			default:
-				// channel 已满，丢弃该历史消息
 			}
 		}
 	})
@@ -134,6 +137,7 @@ func fetchRoomInfo(roomID int) (*RoomInfo, error) {
 		RoomId:         roomID,
 		Uid:            int(data.Get("uid").Int()),
 		Title:          data.Get("title").String(),
+		LiveStatus:     int(data.Get("live_status").Int()),
 		AreaName:       data.Get("area_name").String(),
 		ParentAreaName: data.Get("parent_area_name").String(),
 		Online:         data.Get("online").Int(),
@@ -169,7 +173,6 @@ func fetchOnlineRank(uid int, roomID int) ([]OnlineRankUser, error) {
 
 // syncRoomInfo 定时同步房间信息和排行榜，每30秒刷新一次
 func syncRoomInfo(roomID int, roomInfoChan chan RoomInfo) {
-	// 立即执行第一次同步
 	fetchAndSendRoomInfo(roomID, roomInfoChan)
 
 	ticker := time.NewTicker(30 * time.Second)
@@ -195,7 +198,6 @@ func fetchAndSendRoomInfo(roomID int, roomInfoChan chan RoomInfo) {
 	select {
 	case roomInfoChan <- *info:
 	default:
-		// channel 已满，丢弃旧数据
 	}
 }
 
@@ -213,7 +215,6 @@ func buildDanmuMsg(danmaku *message.Danmaku) DanmuMsg {
 	}
 	if danmaku.Type == message.EmoticonDanmaku {
 		emoticonStr := fmt.Sprintf("[%v]", danmaku.Extra.Content)
-		// msg.Content = strings.TrimPrefix(emoticonStr, "upower_")
 		msg.Content = emoticonStr
 	}
 	return msg
@@ -225,9 +226,11 @@ func setupEventHandlers(c *client.Client, busChan chan DanmuMsg) {
 		msg := buildDanmuMsg(danmaku)
 		busChan <- msg
 		notifyDanmu(msg)
+		QueueSpeak(msg)
 	})
 
 	c.OnSuperChat(func(superChat *message.SuperChat) {
+		GiftTotal += float64(superChat.Price)
 		msg := DanmuMsg{
 			Author:    superChat.UserInfo.Uname,
 			Content:   superChat.Message,
@@ -237,9 +240,13 @@ func setupEventHandlers(c *client.Client, busChan chan DanmuMsg) {
 		}
 		busChan <- msg
 		notifyDanmu(msg)
+		QueueSpeak(msg)
 	})
 
 	c.OnGift(func(gift *message.Gift) {
+		if gift.CoinType == "gold" {
+			GiftTotal += float64(gift.Price) / 1000.0
+		}
 		msg := DanmuMsg{
 			Author:    gift.Uname,
 			Content:   fmt.Sprintf("投喂了 %d 个 %s", gift.Num, gift.GiftName),
@@ -252,9 +259,11 @@ func setupEventHandlers(c *client.Client, busChan chan DanmuMsg) {
 		}
 		busChan <- msg
 		notifyDanmu(msg)
+		QueueSpeak(msg)
 	})
 
 	c.OnGuardBuy(func(guardBuy *message.GuardBuy) {
+		GiftTotal += float64(guardBuy.Price)
 		msg := DanmuMsg{
 			Author:    guardBuy.Username,
 			Content:   fmt.Sprintf("购买了 %s", guardBuy.GiftName),
@@ -265,9 +274,9 @@ func setupEventHandlers(c *client.Client, busChan chan DanmuMsg) {
 		}
 		busChan <- msg
 		notifyDanmu(msg)
+		QueueSpeak(msg)
 	})
 
-	// 进入房间事件
 	c.RegisterCustomEventHandler("INTERACT_WORD", func(s string) {
 		result := gjson.Parse(s)
 		uname := result.Get("data.uname").String()
@@ -280,6 +289,7 @@ func setupEventHandlers(c *client.Client, busChan chan DanmuMsg) {
 			}
 			busChan <- msg
 			notifyDanmu(msg)
+			QueueSpeak(msg)
 		}
 	})
 }
@@ -315,20 +325,13 @@ func startBlivedmClient(roomID int, busChan chan DanmuMsg) {
 			Type:    "NOTICE_MSG",
 			Time:    time.Now(),
 		}
-
-		// blivedm-go 内部有 wsLoop 和 heartBeatLoop，goroutine 自动保持运行
 	}()
 }
 
 func Run(busChan chan DanmuMsg, roomInfoChan chan RoomInfo) {
 	roomID := int(config.Config.RoomId)
 
-	// 启动房间信息同步（每30秒刷新）
 	go syncRoomInfo(roomID, roomInfoChan)
-
-	// 获取历史弹幕（仅执行一次）
 	go getHistory(busChan, roomID)
-
-	// 启动 blivedm 客户端
 	startBlivedmClient(roomID, busChan)
 }

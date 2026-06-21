@@ -13,10 +13,12 @@ import (
 	"github.com/rivo/tview"
 )
 
-func roomInfoHandler(app *tview.Application, roomInfoView *tview.TextView, roomInfoChan chan getter.RoomInfo) {
+func roomInfoHandler(app *tview.Application, roomInfoView *tview.TextView, giftTotalView *tview.TextView, roomInfoChan chan getter.RoomInfo) {
 	for roomInfo := range roomInfoChan {
+		statusStr := map[int]string{0: "未开播", 1: "● 直播中", 2: "● 轮播中"}[roomInfo.LiveStatus]
+		statusColor := map[int]string{0: "#FF4444", 1: "#00FF00", 2: "#FFFF00"}[roomInfo.LiveStatus]
 		roomInfoView.SetText(
-			"[" + config.Config.InfoColor + "]" +
+			"[" + statusColor + "]" + statusStr + " [" + config.Config.InfoColor + "]" +
 				roomInfo.Title + "\n" +
 				fmt.Sprintf("ID: %d", roomInfo.RoomId) + "\n" +
 				fmt.Sprintf("分区: %s/%s", roomInfo.ParentAreaName, roomInfo.AreaName) + "\n" +
@@ -24,6 +26,7 @@ func roomInfoHandler(app *tview.Application, roomInfoView *tview.TextView, roomI
 				fmt.Sprintf("❤️: %d", roomInfo.Attention) + "\n" +
 				fmt.Sprintf("🕒: %s", roomInfo.Time) + "\n",
 		)
+		giftTotalView.SetText(fmt.Sprintf("[#FF0000]🎁¥%.1f", getter.GiftTotal))
 		roomInfoView.ScrollToBeginning()
 		app.Draw()
 	}
@@ -34,6 +37,16 @@ func draw(app *tview.Application, roomId int64, busChan chan getter.DanmuMsg, ro
 
 	roomInfoView := tview.NewTextView().SetDynamicColors(true)
 	roomInfoView.SetBackgroundColor(common.Bg)
+
+	giftFlex := tview.NewFlex()
+	giftTotalView := tview.NewTextView().SetDynamicColors(true).SetTextAlign(tview.AlignRight)
+	giftTotalView.SetBackgroundColor(common.Bg)
+	giftFlex.AddItem(giftTotalView, 0, 1, false)
+	giftFlex.AddItem(tview.NewBox().SetBackgroundColor(common.Bg), 5, 0, false)
+
+	titleFlex := tview.NewFlex()
+	titleFlex.AddItem(roomInfoView, 0, 1, false)
+	titleFlex.AddItem(giftFlex, 25, 0, false)
 
 	delimiter1 := tview.NewTextView().SetTextColor(tcell.GetColor(config.Config.FrameColor))
 	delimiter2 := tview.NewTextView().SetTextColor(tcell.GetColor(config.Config.FrameColor))
@@ -55,13 +68,13 @@ func draw(app *tview.Application, roomId int64, busChan chan getter.DanmuMsg, ro
 	input.SetFormAttributes(0, tcell.ColorDefault, common.Bg, tcell.ColorDefault, common.Bg)
 
 	grid.
-		AddItem(roomInfoView, 0, 0, 1, 1, 0, 0, false).
+		AddItem(titleFlex, 0, 0, 1, 1, 0, 0, false).
 		AddItem(delimiter1, 1, 0, 1, 1, 0, 0, false).
 		AddItem(messagesView, 2, 0, 1, 1, 0, 0, false).
 		AddItem(delimiter2, 3, 0, 1, 1, 0, 0, false).
 		AddItem(input /*  */, 4, 0, 1, 1, 0, 0, true)
 
-	go roomInfoHandler(app, roomInfoView, roomInfoChan)
+	go roomInfoHandler(app, roomInfoView, giftTotalView, roomInfoChan)
 	go common.DanmuHandler(app, messagesView, busChan)
 
 	input.SetDoneFunc(func(key tcell.Key) {

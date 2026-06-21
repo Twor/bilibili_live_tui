@@ -4,6 +4,7 @@ Theme = 3
 SingleLine = 1
 ShowTime = 0
 Notify = 1
+Speak = 0
 TimeColor = "#FFFFFF"
 NameColor = "#FFFFFF"
 ContentColor = "#FFFFFF"

@@ -32,24 +32,22 @@ var (
 )
 
 // Run 初始化发送弹幕功能
-func Run() {
+func Run() error {
 	cookieStr = config.Config.Cookie
 	csrfToken = extractCSRFToken(cookieStr)
 
 	if csrfToken == "" {
-		fmt.Println("Cookie中未找到bili_jct，发送弹幕功能将不可用")
-		return
+		return fmt.Errorf("Cookie中未找到bili_jct")
 	}
 
 	// 复用 login 包的 VerifyCookie 验证 Cookie
 	valid, _, err := login.VerifyCookie(cookieStr)
 	if err != nil || !valid {
-		fmt.Println("Cookie验证失败，发送弹幕功能将不可用")
-		return
+		return fmt.Errorf("Cookie验证失败: %w", err)
 	}
 
 	initialized = true
-	fmt.Println("发送弹幕功能已就绪")
+	return nil
 }
 
 // extractCSRFToken 从Cookie字符串中提取bili_jct
@@ -111,6 +109,7 @@ func sendDanmaku(roomID int64, color int64, fontsize int, mode int, msg string, 
 	form.Set("csrf", csrfToken)
 	form.Set("csrf_token", csrfToken)
 
+	
 	req, err := http.NewRequest("POST", "https://api.live.bilibili.com/msg/send", strings.NewReader(form.Encode()))
 	if err != nil {
 		return fmt.Errorf("创建请求失败: %w", err)
@@ -127,6 +126,7 @@ func sendDanmaku(roomID int64, color int64, fontsize int, mode int, msg string, 
 	}
 	defer resp.Body.Close()
 
+		
 	var result struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`

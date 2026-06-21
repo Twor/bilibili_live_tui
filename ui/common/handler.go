@@ -33,9 +33,13 @@ func SetBoxAttr(box *tview.Box, title string) {
 
 func RoomInfoHandler(app *tview.Application, roomInfoView *tview.TextView, rankUsersView *tview.TextView, roomInfoChan chan getter.RoomInfo) {
 	for roomInfo := range roomInfoChan {
+		giftTotalStr := fmt.Sprintf(" [#FF0000]🎁¥%.1f", getter.GiftTotal)
+		statusStr := map[int]string{0: "未开播", 1: "● 直播中", 2: "● 轮播中"}[roomInfo.LiveStatus]
+		statusColor := map[int]string{0: "#FF4444", 1: "#00FF00", 2: "#FFFF00"}[roomInfo.LiveStatus]
 		roomInfoView.SetText(
 			"[" + config.Config.InfoColor + "]" +
-				roomInfo.Title + "\n" +
+				roomInfo.Title + giftTotalStr + "\n" +
+				"[" + statusColor + "]" + statusStr + "\n" +
 				fmt.Sprintf("ID: %d", roomInfo.RoomId) + "\n" +
 				fmt.Sprintf("分区: %s/%s", roomInfo.ParentAreaName, roomInfo.AreaName) + "\n" +
 				fmt.Sprintf("👀: %d", roomInfo.Online) + "\n" +
@@ -93,9 +97,9 @@ func DanmuHandler(app *tview.Application, messages *tview.TextView, busChan chan
 			}
 		case "GUARD_BUY":
 			str += fmt.Sprintf("[%s]%s [%s]%s: [%s] 购买了 %s（¥%d）", config.Config.TimeColor, timeStr, colorGift, msg.Author, colorGift, msg.GiftName, msg.GiftPrice)
-		case "INTERACT_WORD":
-			str += fmt.Sprintf("[%s]%s [%s]%s[%s]%s", config.Config.TimeColor, timeStr, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
-		case "NOTICE_MSG":
+	case "INTERACT_WORD":
+		str += fmt.Sprintf("[%s]%s [#666666]%s %s", config.Config.TimeColor, timeStr, msg.Author, msg.Content)
+	case "NOTICE_MSG":
 			str += fmt.Sprintf("[%s]%s", config.Config.ContentColor, msg.Content)
 		default:
 			str += fmt.Sprintf("[%s]%s [%s]%s[%s]: %s", config.Config.TimeColor, timeStr, config.Config.NameColor, msg.Author, config.Config.ContentColor, msg.Content)
